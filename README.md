@@ -16,4 +16,4 @@ plugins:
   - serverless-plugin-bespoken
 ```
 
-You're set! The plugin will run during an `sls proxy`.
+You're set! The plugin will run by using `sls proxy`.
