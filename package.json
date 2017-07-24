@@ -1,8 +1,8 @@
 {
-  "author": "Bespoken",
   "dependencies": {
     "bespoken-tools": "^1.0.1"
   },
+  "license": "SEE LICENSE IN LICENSE",
   "description": "Serverless Plugin Bespoken",
   "main": "index.js",
   "devDependencies": {
