@@ -4,19 +4,17 @@
     "bespoken-tools": "^1.0.1"
   },
   "description": "Serverless Plugin Bespoken",
+  "main": "index.js",
   "devDependencies": {
     "mocha": "3.3.0"
   },
   "engines": {
     "node": ">=4.2.6"
   },
-  "files": [
-    "dist/"
-  ],
   "name": "serverless-plugin-bespoken",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bespoken/serverless-plugin-bespoken.git"
   },
-  "version": "0.0.1"
+  "version": "0.0.3"
 }
