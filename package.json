@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "bespoken-tools": "^1.0.1"
+    "bespoken-tools": "^1.0.2"
   },
   "license": "SEE LICENSE IN LICENSE",
   "description": "Serverless Plugin Bespoken",
@@ -16,5 +16,5 @@
     "type": "git",
     "url": "git+https://github.com/bespoken/serverless-plugin-bespoken.git"
   },
-  "version": "0.0.3"
+  "version": "0.0.4"
 }
