@@ -1,0 +1,20 @@
+{
+  "name": "serverless-plugin-bespoken",
+  "description": "Serverless Plugin Bespoken",
+  "version": "0.0.4",
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "index.js",
+  "engines": {
+    "node": ">=4.2.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespoken/serverless-plugin-bespoken.git"
+  },
+  "dependencies": {
+    "bespoken-tools": "^1.0.3"
+  },
+  "devDependencies": {
+    "mocha": "3.3.0"
+  }
+}
