@@ -12,7 +12,7 @@
     "url": "git+https://github.com/bespoken/serverless-plugin-bespoken.git"
   },
   "dependencies": {
-    "bespoken-tools": "^1.0.2"
+    "bespoken-tools": "^1.0.3"
   },
   "devDependencies": {
     "mocha": "3.3.0"
