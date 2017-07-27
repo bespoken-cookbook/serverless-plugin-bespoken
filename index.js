@@ -1,7 +1,7 @@
 const bstProxy = require("./bstCommand").bstProxy;
 const bstInterface = require("./bstInterface");
 
-class ServerlessPlugin {
+class ServerlessPluginBespoken {
     constructor(serverless, options) {
         this.serverless = serverless;
         this.options = options;
@@ -12,6 +12,15 @@ class ServerlessPlugin {
                 lifecycleEvents: [
                     'start',
                  ],
+                options: {
+                    function: {
+                        usage:
+                        'Specify the function in your config that you want to use'
+                        + '(e.g. "--function myFunction" or "-f myFunction")',
+                        required: false,
+                        shortcut: 'f',
+                    },
+                },
             },
         };
 
@@ -36,4 +45,4 @@ class ServerlessPlugin {
     }
 }
 
-module.exports = ServerlessPlugin;
+module.exports = ServerlessPluginBespoken;

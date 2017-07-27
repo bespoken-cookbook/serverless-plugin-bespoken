@@ -40,4 +40,20 @@ describe("BSTInterface", function () {
             assert.equal(error.message, "No available function found");
         }
     });
+
+    it("extracts handler from parameter if it's provided", function () {
+        const mockFunctionsObject = {
+            randomFunction: {
+                handler: "handler.randomFunction",
+            },
+            helloWorld: {
+                handler: "handler.helloWorld",
+            },
+        };
+
+        const result = bstInterface.extractHandlerObject(mockFunctionsObject, "helloWorld");
+
+        assert.equal(result.file, "handler");
+        assert.equal(result.exportedFunction, "helloWorld");
+    });
 });
