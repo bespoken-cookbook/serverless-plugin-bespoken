@@ -1,7 +1,7 @@
 const bstProxy = require("./bstCommand").bstProxy;
 const bstInterface = require("./bstInterface");
 
-class ServerlessPlugin {
+class ServerlessPluginBespoken {
     constructor(serverless, options) {
         this.serverless = serverless;
         this.options = options;
@@ -45,4 +45,4 @@ class ServerlessPlugin {
     }
 }
 
-module.exports = ServerlessPlugin;
+module.exports = ServerlessPluginBespoken;
