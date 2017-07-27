@@ -1,10 +1,14 @@
 const fs = require("fs");
 const path = require("path");
 
-const extractHandlerObject = function(serverlessFunctions) {
+const extractHandlerObject = function(serverlessFunctions, specifiedFunction) {
     // We use the first function that provides a handler
     for (const key in serverlessFunctions) {
         const sFunction = serverlessFunctions[key];
+        // If the handler Function is specified only validate for it
+        if (specifiedFunction && specifiedFunction !== key) {
+            continue;
+        }
         if (!sFunction.handler) {
             continue;
         }

@@ -12,6 +12,15 @@ class ServerlessPlugin {
                 lifecycleEvents: [
                     'start',
                  ],
+                options: {
+                    function: {
+                        usage:
+                        'Specify the function in your config that you want to use'
+                        + '(e.g. "--function myFunction" or "-f myFunction")',
+                        required: false,
+                        shortcut: 'f',
+                    },
+                },
             },
         };
 
