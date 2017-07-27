@@ -6,6 +6,15 @@ A [serverless](http://www.serverless.com) plugin to test your work without deplo
 
 If you have to deploy your work everytime you are making changes, this tool will help you reduce that time. We generate a local server
 that is a attached to a proxy online so that you can use that url to access the functionality that you have in your code in your laptop.
+# What Does This Do?
+The `bst proxy` service makes your local AWS Lambda available to test publicly.
+
+It creates a unique public URL through which you can access it. Once installed, all you need to access it is:
+```bash
+sls proxy
+```
+
+You can now send and receive data to your locally running Lambda!
 
 # Install
 
