@@ -1,6 +1,3 @@
-const fs = require("fs");
-const path = require("path");
-
 const extractHandlerObject = function(serverlessFunctions, specifiedFunction) {
     // We use the first function that provides a handler
     for (const key in serverlessFunctions) {
@@ -24,12 +21,6 @@ const extractHandlerObject = function(serverlessFunctions, specifiedFunction) {
     throw new Error("No available function found");
 };
 
-const createInterfaceFile = function(localPath, { file, exportedFunction}) {
-    const configBuffer = Buffer.from("exports.handler = require(\"./"+ file +"\")." + exportedFunction + ";");
-    fs.writeFileSync(path.join(localPath, "bespoken-interface.js"), configBuffer);
-};
-
 module.exports = {
     extractHandlerObject,
-    createInterfaceFile,
 };
