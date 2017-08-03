@@ -1,35 +1,40 @@
-const fs = require("fs");
-const path = require("path");
+const createFunctionObject = function(serverlessFunction) {
+    const splitHandler =  serverlessFunction.handler.split(".");
+    const file = splitHandler[0];
+    const exportedFunction = splitHandler[1];
+    return {
+        file,
+        exportedFunction,
+    };
+}
 
 const extractHandlerObject = function(serverlessFunctions, specifiedFunction) {
     // We use the first function that provides a handler
-    for (const key in serverlessFunctions) {
-        const sFunction = serverlessFunctions[key];
-        // If the handler Function is specified only validate for it
-        if (specifiedFunction && specifiedFunction !== key) {
-            continue;
+    let sFunction;
+
+    if (specifiedFunction) {
+        sFunction = serverlessFunctions[specifiedFunction];
+        if (!sFunction || !sFunction.handler) {
+            throw new Error("No available function found");
         }
-        if (!sFunction.handler) {
-            continue;
+    } else {
+        for (const key in serverlessFunctions) {
+            // If the handler Function is specified only validate for it
+            if (!serverlessFunctions[key].handler) {
+                continue;
+            }
+            sFunction = serverlessFunctions[key];
+            break;
         }
-        const splitHandler =  sFunction.handler.split(".");
-        const file = splitHandler[0];
-        const exportedFunction = splitHandler[1];
-        return {
-            file,
-            exportedFunction,
-        };
     }
 
-    throw new Error("No available function found");
-};
+    if (!sFunction) {
+        throw new Error("No available function found");
+    }
 
-const createInterfaceFile = function(localPath, { file, exportedFunction}) {
-    const configBuffer = Buffer.from("exports.handler = require(\"./"+ file +"\")." + exportedFunction + ";");
-    fs.writeFileSync(path.join(localPath, "bespoken-interface.js"), configBuffer);
+    return createFunctionObject(sFunction);
 };
 
 module.exports = {
     extractHandlerObject,
-    createInterfaceFile,
 };
