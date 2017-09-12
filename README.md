@@ -23,7 +23,7 @@ You can now send and receive data to your locally running Lambda! Here is a demo
 
 [![serverless Plugin](/ServerlessPluginDemo.gif)](/ServerlessPluginDemo.gif)
 
-More detailed info on how the proxy works can be [found here](http://docs.bespoken.tools/en/latest/tutorials/tutorial_lambda_local/).
+More detailed info on how the proxy works can be [found here](http://docs.bespoken.io/en/latest/tutorials/tutorial_lambda_local/).
 # Install
 
 ```
