@@ -2,7 +2,7 @@
 
 [![serverless](http://public.serverless.com/badges/v3.svg)](http://www.serverless.com)
 
-A [serverless](http://www.serverless.com) plugin to test your work without deploying with [bespoken tools](https://bespoken.tools).
+A [serverless](http://www.serverless.com) plugin using [bespoken](https://bespoken.io) proxy to test your work without deploying.
 
 If you have to deploy your work everytime you are making changes, this tool will help you reduce that time. We generate a local server
 that is a attached to a proxy online so that you can use that url to access the functionality that you have in your code in your laptop.
