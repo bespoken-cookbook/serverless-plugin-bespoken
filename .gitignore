@@ -1,3 +1,9 @@
+# ignore generated javascript
+lib/
+
+# ignore vscode settings
+.vscode
+
 # Logs
 logs
 *.log
