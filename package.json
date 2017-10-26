@@ -3,7 +3,10 @@
   "description": "Serverless Plugin Bespoken",
   "version": "0.0.6",
   "license": "SEE LICENSE IN LICENSE",
-  "main": "index.js",
+  "main": "./lib/index.js",
+  "scripts": {
+    "build": "tsc"
+  },
   "engines": {
     "node": ">=4.2.6"
   },
@@ -12,9 +15,18 @@
     "url": "git+https://github.com/bespoken/serverless-plugin-bespoken.git"
   },
   "dependencies": {
-    "bespoken-tools": "^1.0.4"
+    "bespoken-tools": "^1.1.1",
+    "chokidar": "^1.7.0",
+    "fs-extra": "^4.0.2",
+    "lodash": "^4.17.4",
+    "source-map-support": "^0.5.0"
   },
   "devDependencies": {
-    "mocha": "3.3.0"
+    "@types/chokidar": "^1.7.3",
+    "@types/fs-extra": "^4.0.3",
+    "@types/lodash": "^4.14.80",
+    "@types/node": "^8.0.46",
+    "mocha": "4.0.1",
+    "typescript": "^2.5.3"
   }
 }

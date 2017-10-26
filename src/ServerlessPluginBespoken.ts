@@ -1,0 +1,407 @@
+import { BSTProxy } from "bespoken-tools";
+
+// TODO: investigate additions to bespoken-tools api to make this reaching into internal api's unecessary ...?
+import { Global } from "bespoken-tools/lib/core/global";
+import { URLMangler } from "bespoken-tools/lib/client/url-mangler";
+import { LoggingHelper } from "bespoken-tools/lib/core/logging-helper";
+import { ModuleManager } from "bespoken-tools/lib/client/module-manager";
+import { NodeUtil } from "bespoken-tools/lib/core/node-util";
+
+import { outputFileSync, copySync, removeSync } from "fs-extra";
+import { join } from "path";
+import { watch } from "chokidar";
+import { debounce } from "lodash";
+
+/**
+ * Monkey patch bespoken's NodeUtil.resetCache method to make it work with symlinks --
+ * Due to limitations of serverless project, symlinks are often needed to share code between stacks -- 
+ * allowing code reload to work with serverless projects that use symlinks is useful ...
+ */
+NodeUtil.resetCache = function() {
+  // don't use a directory prefix when clearing require cache because the cache entry corresponds to
+  // resolved filename -- if project uses symlinks the underlying file might be a path outside of project base directory
+  // NOTE: this is true even if actual require(...) call refers to a path within project directory ...
+  // let directory: string = process.cwd();
+  for (const file of Object.keys(require.cache)) {
+    // if (file.startsWith(directory) && file.indexOf("node_modules") === -1) {
+    if (file.indexOf("node_modules") === -1) {
+      delete require.cache[require.resolve(file)];
+    }
+  }
+};
+
+/**
+Create a directory structure with passthru modules for each specified handler
+
+Example: 
+  buildPassThruModules(["foo/bar/baz.handler", "foo/bar/baz.otherhandler", "foo/been.handler"], "./someDirectory") 
+Result:
+  outputDirectory will contain files: 
+    - foo/bar/baz.js
+    - foo/been.handler
+    - node_modules/bespoken-lambda-passthru/index.js
+
+ * @param handlers array of function path specifications as used in serverless/lambda -- example: ["foo/bar/baz.handler"]
+ * @param outputDirectory directory into which passthru stubs will be written
+ */
+const buildPassThruModules = (handlers: string[], outputDirectory: string) => {
+  let modulesWithHandlers: { [index: string]: string[] } = {};
+
+  for (const handler of handlers) {
+    const [modulePath, handlerName] = handler.split(".");
+
+    if (modulesWithHandlers[modulePath]) {
+      modulesWithHandlers[modulePath].push(handlerName);
+    } else {
+      modulesWithHandlers[modulePath] = [handlerName];
+    }
+  }
+
+  for (const modulePath in modulesWithHandlers) {
+    const handlerNames = modulesWithHandlers[modulePath];
+    // create a little shim which imports and re-exports the passthru handler with the correct handler name(s)
+    const moduleContents = `
+  const passThruModule = require("bespoken-lambda-passthru")
+  ${handlerNames.map(handlerName => {
+    return `exports.${handlerName} = passThruModule.passThruHandler
+    `;
+  })}
+  `;
+
+    // write the passthru stub module to filesystem
+    outputFileSync(join(outputDirectory, `${modulePath}.js`), moduleContents);
+  }
+
+  // copy the passthru implementation into node_modules/ directory (so it can be required from the created module stubs)
+  copySync(
+    join(__dirname, "injected_node_modules"),
+    join(outputDirectory, "node_modules")
+  );
+};
+
+const mutateProcessEnvironmentVariables = (vars: any) => {
+  for (const key in vars) {
+    process.env[key] = vars[key];
+  }
+  // filter out ridiculous number of npm_ env variables
+  for (const key in process.env) {
+    if (key.startsWith("npm_")) {
+      delete process.env[key];
+    }
+  }
+};
+
+const extractHandlerObject = (
+  serverlessFunctions: any,
+  specifiedFunction: string
+) => {
+  // We use the first function that provides a handler
+  let sFunction;
+
+  if (specifiedFunction) {
+    sFunction = serverlessFunctions[specifiedFunction];
+    if (!sFunction || !sFunction.handler) {
+      throw new Error("No available function found");
+    }
+  } else {
+    for (const key in serverlessFunctions) {
+      // If the handler Function is specified only validate for it
+      if (!serverlessFunctions[key].handler) {
+        continue;
+      }
+      sFunction = serverlessFunctions[key];
+      break;
+    }
+  }
+
+  if (!sFunction) {
+    throw new Error("No available function found");
+  }
+
+  return createFunctionObject(sFunction);
+};
+
+const createFunctionObject = (serverlessFunction: { handler: string }) => {
+  const splitHandler = serverlessFunction.handler.split(".");
+  const file = splitHandler[0];
+  const exportedFunction = splitHandler[1];
+  return {
+    file,
+    exportedFunction
+  };
+};
+
+/**
+ * Defines command:
+ * - `serverless proxy`
+ *    Initiates connection to public bespoken proxy so requests to public url are forwarded to local machine and starts 
+ *    a local server that responds to requests by dispatching the url path to the appropriate lambda function.
+ * 
+ * - `serverless deploy --enablePassThru`
+ *   When --enablePassThru is passed on command line, the plugin will intercept the serverless package lifecycle and replace the deployed bundle with passthru lambda handlers
+ *   that forward requests to the bespoken proxy server (and subsequently back to developer machine)
+ */
+export class ServerlessPluginBespoken {
+  private serverless: any;
+  private options: any;
+  private proxy: BSTProxy;
+  private originalServicePath: string;
+  private passThruServicePath: string;
+
+  private get selectedFunctionFromCommandLine(): string | undefined {
+    return this.options.function;
+  }
+
+  private get functionsFromServerlessConfig(): any {
+    return this.serverless.service.functions;
+  }
+
+  private get environmentVariablesFromServerlessConfig(): object {
+    const env = this.serverless.service.provider.environment;
+    if (env) {
+      this.serverless.cli.log(
+        "Configuring environment variables from serverless config"
+      );
+    } else {
+      this.serverless.cli.log(
+        "No Environment variables found in serverless config"
+      );
+    }
+    return env || {};
+  }
+
+  private get handlers(): string[] {
+    const handlers = this.serverless.service.functions || {};
+
+    return Object.entries(handlers).map(([_, lambdaDefinition]) => {
+      return lambdaDefinition.handler;
+    });
+  }
+
+  private get enableSecurity(): boolean {
+    return !(this.options.secure == null);
+  }
+
+  public commands = {
+    proxy: {
+      usage: "Plugin to call bespoken bst lambda service",
+      lifecycleEvents: ["start"],
+      options: {
+        function: {
+          usage:
+            "Specify the function in your config that you want to use" +
+            '(e.g. "--function myFunction" or "-f myFunction")',
+          required: false,
+          shortcut: "f"
+        },
+        secure: {
+          usage:
+            "Make proxy server require that 'secure' token be specified -- used to reduce likelihood of arbitrary hosts contacting your service via the proxy server",
+          required: false,
+          shortcut: "s"
+        }
+      }
+    }
+  };
+
+  public get hooks() {
+    return {
+      "proxy:start": this.proxyStart,
+      "before:package:createDeploymentArtifacts": this.deployPassThru,
+      "after:package:createDeploymentArtifacts": this.injectPassThruModules
+    };
+  }
+
+  constructor(serverless: any, options: any) {
+    this.serverless = serverless;
+    this.options = options;
+  }
+
+  proxyStart = async () => {
+    // parse the bespoken config
+    await Global.initializeCLI();
+    // enable verbose logging
+    LoggingHelper.setVerbose(true);
+
+    // ensure environment variables from serverless config are set
+    mutateProcessEnvironmentVariables(
+      this.environmentVariablesFromServerlessConfig
+    );
+
+    // create the lambda proxy
+    if (this.selectedFunctionFromCommandLine) {
+      // single function mode -- assumes not secure proxy
+      const handler = extractHandlerObject(
+        this.functionsFromServerlessConfig,
+        this.selectedFunctionFromCommandLine
+      );
+      this.proxy = BSTProxy.lambda(handler.file, handler.exportedFunction);
+    } else {
+      // directory mode -- assumes secure proxy
+      this.proxy = BSTProxy.lambda();
+    }
+
+    // enable secure if --secure is supplied
+    if (this.enableSecurity) {
+      this.proxy.activateSecurity();
+    }
+
+    // start the lambda proxy
+    this.proxy.start(async () => {
+      // HACK: reach into proxy and grab the moduleManager instance
+      const moduleManager = (this.proxy as any).lambdaServer
+        .moduleManager as ModuleManager;
+
+      // stop watching with watcher that uses node's fs.watch and use chokidar instead to allow for recursive symlink traversal
+      (moduleManager as any).watcher.close();
+
+      const ignoreFunc = (filename: string) => {
+        if (filename.indexOf("node_modules") !== -1) {
+          return true;
+        } else if (filename.endsWith("___")) {
+          return true;
+        } else if (filename.startsWith(".")) {
+          return true;
+        }
+        return false;
+      };
+
+      (moduleManager as any).watcher = watch(process.cwd(), {
+        ignored: [ignoreFunc],
+        followSymlinks: true
+      });
+
+      (moduleManager as any).watcher.on(
+        "all",
+        debounce(
+          function(this: ModuleManager) {
+            LoggingHelper.info(
+              "FileWatcher",
+              "FS.Watch Event(s) Detected: Reloading project code."
+            );
+
+            // reload project's modules after change events
+            (this as any).modules = {};
+            (this as any).dirty = true;
+          }.bind(moduleManager),
+          500
+        )
+      );
+
+      if (this.enableSecurity) {
+        this.serverless.cli.log("Bespoken proxy started in secure mode");
+        this.serverless.cli.log(process.cwd());
+        this.serverless.cli.log(
+          "The public URL for accessing your local service"
+        );
+        this.serverless.cli.log("");
+
+        this.serverless.cli.log(
+          URLMangler.manglePipeToPath(Global.config().sourceID())
+        );
+      } else {
+        this.serverless.cli.log(
+          "Bespoken proxy started in publically accessible mode"
+        );
+        this.serverless.cli.log(process.cwd());
+        this.serverless.cli.log(
+          "The public URL for accessing your local service"
+        );
+        this.serverless.cli.log("");
+
+        this.serverless.cli.log(
+          URLMangler.manglePipeToPath(
+            Global.config().sourceID(),
+            Global.config().secretKey()
+          )
+        );
+      }
+      this.serverless.cli.log("");
+      this.serverless.cli.log(
+        "The URL for viewing transaction history of requests/responses sent through the proxy service"
+      );
+      this.serverless.cli.log("");
+      this.serverless.cli.log(
+        URLMangler.mangleNoPath(
+          Global.config().sourceID(),
+          Global.config().secretKey()
+        )
+      );
+    });
+  };
+
+  deployPassThru = async () => {
+    // parse the bespoken config
+    await Global.loadConfig();
+
+    this.serverless.cli.log("cli options", this.options);
+
+    // do nothing if enablePassThru not passed on command line
+    if (!this.options.enablePassThru) {
+      return;
+    }
+
+    this.serverless.cli.log(
+      "Replacing lambda handlers with bespoken passthru functions"
+    );
+
+    const bespokenProxyUrl = URLMangler.manglePipeToPath(
+      Global.config().sourceID()
+    );
+
+    const bespokenProxySecret = Global.config().secretKey();
+
+    // inject environment variables with necessary bespoken connection parameters into lambda environment
+    this.mutateLambdaEnvironmentVariables({
+      bespoken_proxy_url: bespokenProxyUrl,
+      bespoken_proxy_secret: bespokenProxySecret
+    });
+
+    this.serverless.cli.log(
+      `Pass through handlers will proxy requests to: ${bespokenProxyUrl}`
+    );
+
+    const handlers = this.handlers;
+
+    // save directory where serverless expects to look for source files
+    this.originalServicePath = this.originalServicePath
+      ? this.originalServicePath
+      : this.serverless.config.servicePath;
+
+    // tell serverless to instead look in this directory for files to package
+    this.passThruServicePath = join(this.originalServicePath, ".passthru");
+    this.serverless.config.servicePath = this.passThruServicePath;
+
+    this.serverless.cli.log(
+      `Replace modules with pass thru handlers: ${handlers}`
+    );
+
+    buildPassThruModules(handlers, this.passThruServicePath);
+
+    // tell the packager to include our faked node_modules/ directory
+    this.serverless.service.package.include.push("node_modules/*");
+  };
+
+  injectPassThruModules = () => {
+    // do nothing if enablePassThru not passed on command line
+    if (!this.options.enablePassThru) {
+      return;
+    }
+
+    // copy contents of 'faked' zip artificat service path
+    copySync(
+      join(this.passThruServicePath, ".serverless"),
+      join(this.originalServicePath, ".serverless")
+    );
+
+    removeSync(this.passThruServicePath);
+
+    this.serverless.config.servicePath = this.originalServicePath;
+  };
+
+  mutateLambdaEnvironmentVariables = (vars: any) => {
+    for (const key in vars) {
+      this.serverless.service.provider.environment[key] = vars[key];
+    }
+  };
+}
