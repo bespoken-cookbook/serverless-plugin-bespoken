@@ -5,7 +5,8 @@
   "license": "SEE LICENSE IN LICENSE",
   "main": "./lib/index.js",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "preversion": "npm run build"
   },
   "engines": {
     "node": ">=4.2.6"

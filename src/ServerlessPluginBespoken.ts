@@ -190,7 +190,7 @@ export class ServerlessPluginBespoken {
   }
 
   /**
-   * Enable securiity if --secure option specified or if in pass-thru routing mode. 
+   * Enable security if --secure option specified or if in pass-thru routing mode.
    */
   private get enableSecurity(): boolean {
     return (
