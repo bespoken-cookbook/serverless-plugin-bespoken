@@ -1,7 +1,7 @@
 {
   "name": "serverless-plugin-bespoken",
   "description": "Serverless Plugin Bespoken",
-  "version": "0.0.7",
+  "version": "0.0.9",
   "license": "SEE LICENSE IN LICENSE",
   "main": "./lib/index.js",
   "scripts": {
