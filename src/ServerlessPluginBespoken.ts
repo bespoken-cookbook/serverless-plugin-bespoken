@@ -93,7 +93,7 @@ const mutateProcessEnvironmentVariables = (vars: any) => {
 
 const extractHandlerObject = (
   serverlessFunctions: any,
-  specifiedFunction: string
+  specifiedFunction: string | undefined
 ) => {
   // We use the first function that provides a handler
   let sFunction;
@@ -135,10 +135,13 @@ const createFunctionObject = (serverlessFunction: { handler: string }) => {
  * Defines command:
  * - `serverless proxy`
  *    Initiates connection to public bespoken proxy so requests to public url are forwarded to local machine and starts 
- *    a local server that responds to requests by dispatching the url path to the appropriate lambda function.
+ *    a local server that responds to requests by dispatching to the appropriate lambda function.  Can be started in 'single function' mode which will dispatch requests to a single specified lambda
+ *    or on '
+ *    
+ *    
  * 
- * - `serverless deploy --enablePassThru`
- *   When --enablePassThru is passed on command line, the plugin will intercept the serverless package lifecycle and replace the deployed bundle with passthru lambda handlers
+ * - `serverless deploy --inject-passthru`
+ *   When --inject-passthru is passed on command line, the plugin will intercept the serverless package lifecycle and replace the deployed bundle with passthru lambda handlers
  *   that forward requests to the bespoken proxy server (and subsequently back to developer machine)
  */
 export class ServerlessPluginBespoken {
@@ -150,6 +153,14 @@ export class ServerlessPluginBespoken {
 
   private get selectedFunctionFromCommandLine(): string | undefined {
     return this.options.function;
+  }
+
+  private get injectPassThruOption(): string | undefined {
+    return this.options["inject-passthru"];
+  }
+
+  private get withPassThruRoutingOption(): string | undefined {
+    return this.options["with-passthru-routing"];
   }
 
   private get functionsFromServerlessConfig(): any {
@@ -178,8 +189,14 @@ export class ServerlessPluginBespoken {
     });
   }
 
+  /**
+   * Enable securiity if --secure option specified or if in pass-thru routing mode. 
+   */
   private get enableSecurity(): boolean {
-    return !(this.options.secure == null);
+    return (
+      !(this.options.secure == null) ||
+      !(this.withPassThruRoutingOption == null)
+    );
   }
 
   public commands = {
@@ -196,9 +213,15 @@ export class ServerlessPluginBespoken {
         },
         secure: {
           usage:
-            "Make proxy server require that 'secure' token be specified -- used to reduce likelihood of arbitrary hosts contacting your service via the proxy server",
+            "Make bespoken server to require that 'secure' token be specified -- used to reduce likelihood of arbitrary hosts contacting your service via the proxy server",
           required: false,
           shortcut: "s"
+        },
+        "with-passthru-routing": {
+          usage:
+            "Configure local proxy server to route requests to lambda functions based on url.  'function' option is ignored if this option is specified.  " +
+            "This option would normally be enabled after deploying passthru's with `deploy-passthru`",
+          required: false
         }
       }
     }
@@ -229,19 +252,26 @@ export class ServerlessPluginBespoken {
     );
 
     // create the lambda proxy
-    if (this.selectedFunctionFromCommandLine) {
-      // single function mode -- assumes not secure proxy
+    if (this.withPassThruRoutingOption == null) {
+      // run local server in 'single function mode' -- all requests are dispatched to a single lambda specified either on command line or
+      // by choosing first function from serverless config ...
       const handler = extractHandlerObject(
         this.functionsFromServerlessConfig,
         this.selectedFunctionFromCommandLine
       );
+      this.serverless.cli.log(
+        `Server configured in single function mode.  Requests will resolve via: ${handler.file}:${handler.exportedFunction}`
+      );
       this.proxy = BSTProxy.lambda(handler.file, handler.exportedFunction);
     } else {
-      // directory mode -- assumes secure proxy
+      this.serverless.cli.log(
+        "Server configured with passthru routing.  Url of requests will be interpreted as serverless handler specifications and dispatched to lambda function based on filesystem path."
+      );
+      // run local server in 'directory mode' -- requests are dispatched to appropriate lambda by mapping url to filesystem path
       this.proxy = BSTProxy.lambda();
     }
 
-    // enable secure if --secure is supplied
+    // enable secure mode if enabled
     if (this.enableSecurity) {
       this.proxy.activateSecurity();
     }
@@ -297,7 +327,10 @@ export class ServerlessPluginBespoken {
         this.serverless.cli.log("");
 
         this.serverless.cli.log(
-          URLMangler.manglePipeToPath(Global.config().sourceID())
+          URLMangler.manglePipeToPath(
+            Global.config().sourceID(),
+            Global.config().secretKey()
+          )
         );
       } else {
         this.serverless.cli.log(
@@ -310,10 +343,7 @@ export class ServerlessPluginBespoken {
         this.serverless.cli.log("");
 
         this.serverless.cli.log(
-          URLMangler.manglePipeToPath(
-            Global.config().sourceID(),
-            Global.config().secretKey()
-          )
+          URLMangler.manglePipeToPath(Global.config().sourceID())
         );
       }
       this.serverless.cli.log("");
@@ -336,8 +366,8 @@ export class ServerlessPluginBespoken {
 
     this.serverless.cli.log("cli options", this.options);
 
-    // do nothing if enablePassThru not passed on command line
-    if (!this.options.enablePassThru) {
+    // do nothing if inject-passthru not passed on command line
+    if (!this.injectPassThruOption) {
       return;
     }
 
@@ -383,8 +413,8 @@ export class ServerlessPluginBespoken {
   };
 
   injectPassThruModules = () => {
-    // do nothing if enablePassThru not passed on command line
-    if (!this.options.enablePassThru) {
+    // do nothing if inject-passthru not passed on command line
+    if (!this.injectPassThruOption) {
       return;
     }
 
