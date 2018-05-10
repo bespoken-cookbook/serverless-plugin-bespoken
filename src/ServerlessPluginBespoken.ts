@@ -17,7 +17,7 @@ import { debounce } from "lodash";
  * Due to limitations of serverless project, symlinks are often needed to share code between stacks -- 
  * allowing code reload to work with serverless projects that use symlinks is useful ...
  */
-NodeUtil.resetCache = function() {
+NodeUtil.resetCache = function () {
   // don't use a directory prefix when clearing require cache because the cache entry corresponds to
   // resolved filename -- if project uses symlinks the underlying file might be a path outside of project base directory
   // NOTE: this is true even if actual require(...) call refers to a path within project directory ...
@@ -63,12 +63,14 @@ const buildPassThruModules = (handlers: string[], outputDirectory: string) => {
     const moduleContents = `
   const passThruModule = require("bespoken-lambda-passthru")
   ${handlerNames.map(handlerName => {
-    return `exports.${handlerName} = passThruModule.passThruHandler
+        return `exports.${handlerName} = passThruModule.passThruHandler
     `;
-  })}
+      })}
   `;
 
-    // write the passthru stub module to filesystem
+
+
+    // then write the passthru stub module to filesystem
     outputFileSync(join(outputDirectory, `${modulePath}.js`), moduleContents);
   }
 
@@ -304,7 +306,7 @@ export class ServerlessPluginBespoken {
       (moduleManager as any).watcher.on(
         "all",
         debounce(
-          function(this: ModuleManager) {
+          function (this: ModuleManager) {
             LoggingHelper.info(
               "FileWatcher",
               "FS.Watch Event(s) Detected: Reloading project code."
@@ -402,14 +404,26 @@ export class ServerlessPluginBespoken {
     this.passThruServicePath = join(this.originalServicePath, ".passthru");
     this.serverless.config.servicePath = this.passThruServicePath;
 
+    // if some other packager has told serverless what functions to package ... -- undo their decision...
+    const allFunctions = this.serverless.service.getAllFunctions();
+
+    for (const functionName of allFunctions) {
+      const functionObject = this.serverless.service.getFunction(functionName);
+
+      if (functionObject.package) {
+        this.serverless.cli.log(`serverless-plugin-bespoken -- resetting packaging for function ${functionName}`)
+        functionObject.package = {}
+      }
+    }
+
     this.serverless.cli.log(
       `Replace modules with pass thru handlers: ${handlers}`
     );
 
     buildPassThruModules(handlers, this.passThruServicePath);
 
-    // tell the packager to include our faked node_modules/ directory
-    this.serverless.service.package.include.push("node_modules/*");
+    // tell the packager to include only our package contents
+    this.serverless.service.package.include = ["*"];
   };
 
   injectPassThruModules = () => {
