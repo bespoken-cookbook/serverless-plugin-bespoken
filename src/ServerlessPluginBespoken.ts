@@ -7,14 +7,22 @@ import { LoggingHelper } from "bespoken-tools/lib/core/logging-helper";
 import { ModuleManager } from "bespoken-tools/lib/client/module-manager";
 import { NodeUtil } from "bespoken-tools/lib/core/node-util";
 
-import { outputFileSync, copySync, removeSync } from "fs-extra";
+import { homedir } from "os"
+
+import {
+  outputFileSync,
+  copySync,
+  removeSync,
+  writeJsonSync,
+  ensureDirSync
+} from "fs-extra";
 import { join } from "path";
 import { watch } from "chokidar";
 import { debounce } from "lodash";
 
 /**
  * Monkey patch bespoken's NodeUtil.resetCache method to make it work with symlinks --
- * Due to limitations of serverless project, symlinks are often needed to share code between stacks -- 
+ * Due to limitations of serverless project, symlinks are often needed to share code between stacks --
  * allowing code reload to work with serverless projects that use symlinks is useful ...
  */
 NodeUtil.resetCache = function () {
@@ -67,8 +75,6 @@ const buildPassThruModules = (handlers: string[], outputDirectory: string) => {
     `;
       })}
   `;
-
-
 
     // then write the passthru stub module to filesystem
     outputFileSync(join(outputDirectory, `${modulePath}.js`), moduleContents);
@@ -133,15 +139,22 @@ const createFunctionObject = (serverlessFunction: { handler: string }) => {
   };
 };
 
+type IServerlessPluginBespokenConfig = {
+  ["serverless-plugin-bespoken"]?: {
+    sourceID: string;
+    secretKey: string;
+  };
+};
+
 /**
  * Defines command:
  * - `serverless proxy`
- *    Initiates connection to public bespoken proxy so requests to public url are forwarded to local machine and starts 
+ *    Initiates connection to public bespoken proxy so requests to public url are forwarded to local machine and starts
  *    a local server that responds to requests by dispatching to the appropriate lambda function.  Can be started in 'single function' mode which will dispatch requests to a single specified lambda
  *    or on '
- *    
- *    
- * 
+ *
+ *
+ *
  * - `serverless deploy --inject-passthru`
  *   When --inject-passthru is passed on command line, the plugin will intercept the serverless package lifecycle and replace the deployed bundle with passthru lambda handlers
  *   that forward requests to the bespoken proxy server (and subsequently back to developer machine)
@@ -149,9 +162,19 @@ const createFunctionObject = (serverlessFunction: { handler: string }) => {
 export class ServerlessPluginBespoken {
   private serverless: any;
   private options: any;
-  private proxy: BSTProxy;
-  private originalServicePath: string;
-  private passThruServicePath: string;
+  private proxy!: BSTProxy;
+  private originalServicePath!: string;
+  private passThruServicePath!: string;
+
+  private get pluginConfig(): IServerlessPluginBespokenConfig | null {
+    const pluginConfig = this.serverless.service.custom[
+      "serverless-plugin-bespoken"
+    ];
+    if (pluginConfig) {
+      return pluginConfig;
+    }
+    return null;
+  }
 
   private get selectedFunctionFromCommandLine(): string | undefined {
     return this.options.function;
@@ -186,7 +209,7 @@ export class ServerlessPluginBespoken {
   private get handlers(): string[] {
     const handlers = this.serverless.service.functions || {};
 
-    return Object.entries(handlers).map(([_, lambdaDefinition]) => {
+    return Object.values(handlers).map((lambdaDefinition: any) => {
       return lambdaDefinition.handler;
     });
   }
@@ -242,9 +265,28 @@ export class ServerlessPluginBespoken {
     this.options = options;
   }
 
-  proxyStart = async () => {
+  loadBespokenPluginConfig = async () => {
+    if (this.pluginConfig) {
+      this.serverless.cli.log("Configuring bespoken to use parameters from serverless.yml")
+      const directory = `${homedir()}/.bst`
+      ensureDirSync(directory);
+      writeJsonSync(`${directory}/config`, {
+        ...this.pluginConfig,
+        version: "1.0.7"
+      }, { spaces: 2 });
+    }
+
     // parse the bespoken config
+    await Global.loadConfig();
+  };
+
+  proxyStart = async () => {
+    // create the bespoken config file if properties are specified in serverless config
+    await this.loadBespokenPluginConfig();
+
+    // initialize the bespoken cli
     await Global.initializeCLI();
+
     // enable verbose logging
     LoggingHelper.setVerbose(true);
 
@@ -262,7 +304,9 @@ export class ServerlessPluginBespoken {
         this.selectedFunctionFromCommandLine
       );
       this.serverless.cli.log(
-        `Server configured in single function mode.  Requests will resolve via: ${handler.file}:${handler.exportedFunction}`
+        `Server configured in single function mode.Requests will resolve via: ${
+        handler.file
+        }: ${handler.exportedFunction}`
       );
       this.proxy = BSTProxy.lambda(handler.file, handler.exportedFunction);
     } else {
@@ -363,8 +407,7 @@ export class ServerlessPluginBespoken {
   };
 
   deployPassThru = async () => {
-    // parse the bespoken config
-    await Global.loadConfig();
+    await this.loadBespokenPluginConfig();
 
     this.serverless.cli.log("cli options", this.options);
 
@@ -411,13 +454,15 @@ export class ServerlessPluginBespoken {
       const functionObject = this.serverless.service.getFunction(functionName);
 
       if (functionObject.package) {
-        this.serverless.cli.log(`serverless-plugin-bespoken -- resetting packaging for function ${functionName}`)
-        functionObject.package = {}
+        this.serverless.cli.log(
+          `serverless - plugin - bespoken-- resetting packaging for function ${functionName}`
+        );
+        functionObject.package = {};
       }
     }
 
     this.serverless.cli.log(
-      `Replace modules with pass thru handlers: ${handlers}`
+      `Replace modules with pass thru handlers: ${handlers} `
     );
 
     buildPassThruModules(handlers, this.passThruServicePath);
