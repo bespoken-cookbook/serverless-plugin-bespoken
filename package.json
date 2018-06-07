@@ -16,18 +16,18 @@
     "url": "git+https://github.com/bespoken/serverless-plugin-bespoken.git"
   },
   "dependencies": {
-    "bespoken-tools": "^1.1.1",
-    "chokidar": "^1.7.0",
-    "fs-extra": "^4.0.2",
+    "bespoken-tools": "^1.2.10",
+    "chokidar": "^2.0.3",
+    "fs-extra": "^6.0.1",
     "lodash": "^4.17.10",
-    "source-map-support": "^0.5.0"
+    "source-map-support": "^0.5.6"
   },
   "devDependencies": {
-    "@types/chokidar": "^1.7.3",
-    "@types/fs-extra": "^4.0.3",
+    "@types/chokidar": "^1.7.5",
+    "@types/fs-extra": "^5.0.2",
     "@types/lodash": "^4.14.109",
-    "@types/node": "^8.0.46",
-    "mocha": "4.0.1",
+    "@types/node": "^8.10.18",
+    "mocha": "5.2.0",
     "typescript": "^2.9.1"
   }
 }
