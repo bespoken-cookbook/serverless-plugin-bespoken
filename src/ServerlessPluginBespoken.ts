@@ -203,7 +203,15 @@ export class ServerlessPluginBespoken {
         "No Environment variables found in serverless config"
       );
     }
-    return env || {};
+
+    const envForLambdaProxy = {
+      ...env,
+      // add a variable to environment so its possible for lambda's to tell
+      // they are running in the lambda proxy
+      SERVERLESS_PLUGIN_BESPOKEN: "TRUE"
+    }
+
+    return envForLambdaProxy;
   }
 
   private get handlers(): string[] {
