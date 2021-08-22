@@ -242,19 +242,22 @@ export class ServerlessPluginBespoken {
             "Specify the function in your config that you want to use" +
             '(e.g. "--function myFunction" or "-f myFunction")',
           required: false,
-          shortcut: "f"
+          shortcut: "f",
+          type: "string"
         },
         secure: {
           usage:
             "Make bespoken server to require that 'secure' token be specified -- used to reduce likelihood of arbitrary hosts contacting your service via the proxy server",
           required: false,
-          shortcut: "s"
+          shortcut: "s",
+          type: "string"
         },
         "with-passthru-routing": {
           usage:
             "Configure local proxy server to route requests to lambda functions based on url.  'function' option is ignored if this option is specified.  " +
             "This option would normally be enabled after deploying passthru's with `deploy-passthru`",
-          required: false
+          required: false,
+          type: "boolean"
         }
       }
     }
